@@ -1,4 +1,4 @@
-module framework
+module github.com/chenjiahao-stl/framework
 
 go 1.21
 
