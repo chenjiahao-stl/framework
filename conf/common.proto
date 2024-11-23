@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package conf;
+
+option go_package = "./;conf";
+
+import "google/protobuf/duration.proto";
+
+message Bootstrap{
+  ConfigCenter config_center = 1;
+  Registry registry = 2;
+  Data data = 3;
+}
+
+//配置中心
+message ConfigCenter{
+  message Nacos {
+    string host = 1;
+    uint64 port = 2;
+    string username = 3;
+    string password = 4;
+    string namespace_id = 5;
+    string group = 6;
+  }
+  Nacos nacos = 1;
+}
+
+//注册中心
+message Registry{
+  message Etcd {
+    int32 max_retry = 1;
+  }
+  string namespace = 1;
+  Etcd etcd = 2;
+}
+
+message Data {
+  message Redis {
+    string primary = 1;
+    string host = 2;
+    uint64 port = 3;
+    string password = 4;
+    uint64 db = 5;
+    string username = 6;
+    string sentinel_username = 7;
+    string sentinel_password = 8;
+    uint64 pool_size = 9;
+    uint64 min_idle_conns = 10;
+    google.protobuf.Duration read_timeout = 11;
+    google.protobuf.Duration write_timeout = 12;
+  }
+  message Etcd {
+    string host = 1;
+    uint64 port = 2;
+    string username = 3;
+    string password = 4;
+  }
+  message Kafka {
+    string host = 1;
+    uint64 port = 2;
+    string username = 3;
+    string password = 4;
+    string producer_mode = 5;
+    uint64 timeout = 6;
+    string manual_partitioner = 7;
+  }
+  message Tracer {
+    string url = 1;
+    string agent_host = 2;
+    string agent_port = 3;
+  }
+  Redis redis = 1;
+  Etcd etcd = 2;
+  Kafka kafka = 3;
+  Tracer tracer = 4;
+}
