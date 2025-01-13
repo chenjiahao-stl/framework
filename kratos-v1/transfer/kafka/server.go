@@ -185,6 +185,29 @@ func NewKafkaServer(opts ...ServerOption) (*KafkaServer, error) {
 	return server, nil
 }
 
+// ConsumerHandlerWithStrategy ConsumerHandlerStrategy Handler处理 middleware 中间件增加 通用策略处理类
+func (s *KafkaServer) ConsumerHandlerWithStrategy() {
+
+}
+
+// ConsumerHandlerWithError 封装消息处理失败之后的异常处理
+/**
+
+ */
+func (s *KafkaServer) ConsumerHandlerWithError() {
+
+}
+
+// SingleConsumerStrategy 循序消费策略
+func (s *KafkaServer) SingleConsumerStrategy() {
+
+}
+
+// ParallelConsumerStrategy 并行消费策略
+func (s *KafkaServer) ParallelConsumerStrategy() {
+
+}
+
 func (s *KafkaServer) ConsumerRouter(topic string, handler HandlerFunc) *ConsumerRouter {
 	router := &ConsumerRouter{
 		topic:   topic,
@@ -194,33 +217,6 @@ func (s *KafkaServer) ConsumerRouter(topic string, handler HandlerFunc) *Consume
 	s.routers = append(s.routers, router)
 	return router
 }
-
-//// Start 开始消费
-//func (kc *KafkaConsumer) Start() error {
-//	kc.wg.Add(1)
-//	go func() {
-//		defer kc.wg.Done()
-//		for {
-//			if err := kc.client.Consume(kc.ctx, kc.config.Topics, kc); err != nil {
-//				log.Printf("Kafka consume error: %v", err)
-//			}
-//			// 如果 context 被取消，则退出
-//			if kc.ctx.Err() != nil {
-//				return
-//			}
-//		}
-//	}()
-//	return nil
-//}
-
-//// Stop 停止消费
-//func (kc *KafkaConsumer) Stop() {
-//	kc.cancel()
-//	kc.wg.Wait()
-//	if err := kc.client.Close(); err != nil {
-//		log.Printf("Error closing Kafka consumer: %v", err)
-//	}
-//}
 
 func (s *KafkaServer) consumerHasGroup(ctx context.Context, r *ConsumerRouter) error {
 	// 创建消费者组
