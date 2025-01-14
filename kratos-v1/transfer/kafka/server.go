@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/IBM/sarama"
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-kratos/kratos/v2/middleware"
 	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
@@ -43,8 +44,6 @@ type ConsumerConfig struct {
 	Version       string                                               // Kafka 版本
 	HandlerFunc   func(context.Context, *sarama.ConsumerMessage) error // 消息处理函数
 }
-
-type HandlerFunc func(context.Context, *sarama.ConsumerMessage) error
 
 type ConsumerRouter struct {
 	topic          string
@@ -88,6 +87,7 @@ type KafkaServer struct {
 	version        string            // Kafka 版本号
 	autoCommit     bool              //是否自动提交
 	routers        []*ConsumerRouter //消费者路由列表
+	middleware     []middleware.Middleware
 	consumerConfig ConsumerConfig
 	config         *sarama.Config
 	ctx            context.Context
@@ -185,37 +185,87 @@ func NewKafkaServer(opts ...ServerOption) (*KafkaServer, error) {
 	return server, nil
 }
 
-// ConsumerHandlerWithStrategy ConsumerHandlerStrategy Handler处理 middleware 中间件增加 通用策略处理类
-func (s *KafkaServer) ConsumerHandlerWithStrategy() {
+// MessageHandler  消息
+type MessageHandler interface {
+	IsRepeat(ctx context.Context) (bool, error)
+	SetError(ctx context.Context, message *sarama.ConsumerMessage) error
+}
 
+type RetryHandler func(int, error) bool
+
+type HandlerFunc func(context.Context, middleware.Middleware, ...*sarama.ConsumerMessage) error
+
+type ConsumerHandler func(context.Context, *sarama.ConsumerMessage) error
+
+// MiddlewareDecorator 中间件装饰器增强函数
+type MiddlewareDecorator func(handler ConsumerHandler) HandlerFunc
+
+// ConsumerHandlerWithStrategy ConsumerHandlerStrategy Handler处理 middleware 中间件增加 通用策略处理类
+func (s *KafkaServer) ConsumerHandlerWithStrategy(topic string, handler ConsumerHandler, decorator MiddlewareDecorator) {
+	if decorator == nil {
+		decorator = s.ProcessMessageSequential //默认是循序消费模式
+	}
+	s.AddRouter(topic, decorator(handler))
 }
 
 // ConsumerHandlerWithError 封装消息处理失败之后的异常处理
-/**
-
- */
-func (s *KafkaServer) ConsumerHandlerWithError() {
-
+// 1.处理消息失败重试次数
+// 2.处理消息失败后的逻辑处理
+func (s *KafkaServer) ConsumerHandlerWithError(handler ConsumerHandler, messageHandler MessageHandler, retryHandler RetryHandler) ConsumerHandler {
+	return func(ctx context.Context, message *sarama.ConsumerMessage) error {
+		/**
+		1.可以将kafka里面的key设置到context上下文中,在执行完业务sql之后记录消息处理事件记录
+		2.校验消息幂等性
+		3.消息处理过程需要加锁,防止消息重复消费,key值可以使用kafka消息key和服务server组成唯一键
+		4.消息失败重试处理策略
+		5.如果多次重试还失败,则记录消息处理失败事件记录
+		*/
+		return nil
+	}
 }
 
-// SingleConsumerStrategy 循序消费策略
-func (s *KafkaServer) SingleConsumerStrategy() {
-
+// ProcessMessageSequential 循序消费模式
+// 装饰器模式-> 对消息进行一层中间件封装增强
+func (s *KafkaServer) ProcessMessageSequential(handler ConsumerHandler) HandlerFunc {
+	return func(ctx context.Context, m middleware.Middleware, messages ...*sarama.ConsumerMessage) error {
+		for i := range messages {
+			if _, err := m(func(ctx context.Context, req interface{}) (interface{}, error) {
+				return nil, handler(ctx, req.(*sarama.ConsumerMessage))
+			})(ctx, messages[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
-// ParallelConsumerStrategy 并行消费策略
-func (s *KafkaServer) ParallelConsumerStrategy() {
-
+// ProcessMessageParallel 并行消费模式
+// 装饰器模式-> 对消费进行一层封装增强
+func (s *KafkaServer) ProcessMessageParallel(handler ConsumerHandler) HandlerFunc {
+	return func(ctx context.Context, m middleware.Middleware, messages ...*sarama.ConsumerMessage) error {
+		eg, egCtx := errgroup.WithContext(ctx)
+		for i := range messages {
+			eg.Go(func() error {
+				if _, err := m(func(ctx context.Context, req interface{}) (interface{}, error) {
+					return nil, handler(ctx, req.(*sarama.ConsumerMessage))
+				})(egCtx, messages[i]); err != nil {
+					return err
+				}
+				return nil
+			})
+			eg.Wait()
+		}
+		return nil
+	}
 }
 
-func (s *KafkaServer) ConsumerRouter(topic string, handler HandlerFunc) *ConsumerRouter {
+func (s *KafkaServer) AddRouter(topic string, handler HandlerFunc) {
 	router := &ConsumerRouter{
 		topic:   topic,
 		handler: handler,
 		async:   false,
 	}
 	s.routers = append(s.routers, router)
-	return router
 }
 
 func (s *KafkaServer) consumerHasGroup(ctx context.Context, r *ConsumerRouter) error {
