@@ -52,6 +52,7 @@ type ConsumerRouter struct {
 	asyncWorkerCap int
 	async          bool
 	client         sarama.ConsumerGroup
+	middlewares    []middleware.Middleware
 	handler        HandlerFunc // 消息处理函数
 }
 
@@ -87,7 +88,7 @@ type KafkaServer struct {
 	version        string            // Kafka 版本号
 	autoCommit     bool              //是否自动提交
 	routers        []*ConsumerRouter //消费者路由列表
-	middleware     []middleware.Middleware
+	middlewares    []middleware.Middleware
 	consumerConfig ConsumerConfig
 	config         *sarama.Config
 	ctx            context.Context
@@ -220,12 +221,16 @@ func (s *KafkaServer) ConsumerHandlerWithError(handler ConsumerHandler, messageH
 		4.消息失败重试处理策略
 		5.如果多次重试还失败,则记录消息处理失败事件记录
 		*/
+
+		if err := handler(ctx, message); err != nil {
+			return err
+		}
 		return nil
 	}
 }
 
 // ProcessMessageSequential 循序消费模式
-// 装饰器模式-> 对消息进行一层中间件封装增强
+// 装饰器模式-> 对消息进行一层中间件功能封装增强
 func (s *KafkaServer) ProcessMessageSequential(handler ConsumerHandler) HandlerFunc {
 	return func(ctx context.Context, m middleware.Middleware, messages ...*sarama.ConsumerMessage) error {
 		for i := range messages {
@@ -240,7 +245,7 @@ func (s *KafkaServer) ProcessMessageSequential(handler ConsumerHandler) HandlerF
 }
 
 // ProcessMessageParallel 并行消费模式
-// 装饰器模式-> 对消费进行一层封装增强
+// 装饰器模式-> 对消息进行一层中间件功能封装增强
 func (s *KafkaServer) ProcessMessageParallel(handler ConsumerHandler) HandlerFunc {
 	return func(ctx context.Context, m middleware.Middleware, messages ...*sarama.ConsumerMessage) error {
 		eg, egCtx := errgroup.WithContext(ctx)
@@ -261,9 +266,10 @@ func (s *KafkaServer) ProcessMessageParallel(handler ConsumerHandler) HandlerFun
 
 func (s *KafkaServer) AddRouter(topic string, handler HandlerFunc) {
 	router := &ConsumerRouter{
-		topic:   topic,
-		handler: handler,
-		async:   false,
+		topic:       topic,
+		handler:     handler,
+		async:       false,
+		middlewares: s.middlewares,
 	}
 	s.routers = append(s.routers, router)
 }
