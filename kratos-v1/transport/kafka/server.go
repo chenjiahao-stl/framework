@@ -264,6 +264,70 @@ func (s *KafkaServer) ProcessMessageParallel(handler ConsumerHandler) HandlerFun
 	}
 }
 
+// ProcessMessageParallelSequence 并行顺序消费模式,按kafka里存储的key或者订单号为key
+// 装饰器模式-> 对消息进行一层中间件功能封装增强
+func (s *KafkaServer) ProcessMessageParallelSequence(handler ConsumerHandler) HandlerFunc {
+	return func(ctx context.Context, m middleware.Middleware, messages ...*sarama.ConsumerMessage) error {
+		//定义一个map[string]chan *sarama.ConsumerMessage,将messages列表根据key分类存储进chan中,这样可以保证消息的顺序性,再开启多个携程进行处理
+		handler := func(message *sarama.ConsumerMessage) error {
+			if _, err := m(func(ctx context.Context, req interface{}) (interface{}, error) {
+				return nil, handler(ctx, req.(*sarama.ConsumerMessage))
+			})(ctx, message); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		messageHandlerQueue := NewMessageHandlerQueue(len(messages), handler)
+
+		for _, message := range messages {
+			messageHandlerQueue.AddQueue(message)
+		}
+
+		return messageHandlerQueue.Start()
+
+	}
+}
+
+type MessageHandlerQueue struct {
+	m         map[string]chan *sarama.ConsumerMessage
+	queueSize int
+	handler   func(message *sarama.ConsumerMessage) error
+}
+
+func NewMessageHandlerQueue(queueSize int, handler func(message *sarama.ConsumerMessage) error) *MessageHandlerQueue {
+	return &MessageHandlerQueue{
+		m:         make(map[string]chan *sarama.ConsumerMessage),
+		queueSize: queueSize,
+		handler:   handler,
+	}
+}
+
+func (q *MessageHandlerQueue) AddQueue(msg *sarama.ConsumerMessage) {
+	if _, exist := q.m[string(msg.Key)]; !exist {
+		q.m[string(msg.Key)] = make(chan *sarama.ConsumerMessage)
+	}
+	q.m[string(msg.Key)] <- msg
+}
+
+func (q *MessageHandlerQueue) Start() error {
+	eg := errgroup.Group{}
+	for _, queue := range q.m {
+		//item := queue ???
+		//close(item)
+		eg.Go(func() error {
+			for message := range queue {
+				if err := q.handler(message); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	return eg.Wait()
+}
+
 func (s *KafkaServer) AddRouter(topic string, handler HandlerFunc) {
 	router := &ConsumerRouter{
 		topic:       topic,
