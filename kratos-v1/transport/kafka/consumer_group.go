@@ -78,6 +78,11 @@ func (h *MultipleConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroup
 	// Do not move the code below to a goroutine.
 	// The `ConsumeClaim` itself is called within a goroutine, see:
 	// https://github.com/IBM/sarama/blob/main/consumer_group.go#L27-L29
+
+	//存储多条msg 再一起消费
+	//初始化一个长度为0,并且切片的容量被初始化为 h.batchSize。
+	buffer := make([]*sarama.ConsumerMessage, 0, h.batchSize)
+
 	for {
 		select {
 		case msg, ok := <-claim.Messages():
@@ -93,12 +98,16 @@ func (h *MultipleConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroup
 				replyHeader:  Header{},
 			})
 			// 调用用户提供的消息处理函数
-			if err := h.handler(ctx, interceptor, msg); err != nil {
-				log.Errorf("Error processing message: %v", err)
-			} else {
-				// 标记消息已处理
-				session.MarkMessage(msg, "")
+			if buffer = append(buffer, msg); len(buffer) == cap(buffer) {
+				if err := h.handler(ctx, interceptor, buffer...); err != nil {
+					log.Errorf("Error processing message: %v", err)
+				} else {
+					// 标记消息已处理
+					session.MarkMessage(msg, "")
+					buffer = buffer[:0] //清空切片，保留原有底层数组
+				}
 			}
+
 		// Should return when `session.Context()` is done.
 		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
 		// https://github.com/IBM/sarama/issues/1192

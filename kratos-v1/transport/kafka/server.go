@@ -175,14 +175,6 @@ func NewKafkaServer(opts ...ServerOption) (*KafkaServer, error) {
 	config.Consumer.Group.Heartbeat.Interval = 3 * time.Second //定义了消费者向 Kafka 发送心跳的间隔时间,即每 3 秒向 Kafka 发送一次心跳。
 	server.config = config
 
-	//// 创建消费者组
-	//client, err := sarama.NewConsumerGroup(cfg.Brokers, cfg.ConsumerGroup, config)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//ctx, cancel := context.WithCancel(context.Background())
-
 	return server, nil
 }
 
@@ -376,7 +368,7 @@ func (s *KafkaServer) consumerHasGroup(ctx context.Context, r *ConsumerRouter) e
 
 func (s *KafkaServer) consumerGroup(ctx context.Context, group sarama.ConsumerGroup, r *ConsumerRouter) error {
 	//异步批量消息处理
-	if r.async {
+	if r.batchSize > 1 {
 		return group.Consume(ctx, []string{r.topic}, &MultipleConsumerGroupHandler{})
 	}
 	//同步单条消息处理
