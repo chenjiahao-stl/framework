@@ -51,6 +51,8 @@ type ConsumerRouter struct {
 	batchSize      int
 	asyncWorkerCap int
 	async          bool
+	autoCommit     bool
+	timeInterval   time.Duration
 	client         sarama.ConsumerGroup
 	middlewares    []middleware.Middleware
 	handler        HandlerFunc // 消息处理函数
@@ -68,6 +70,11 @@ func (r *ConsumerRouter) SetGroupId(groupId string) *ConsumerRouter {
 
 func (r *ConsumerRouter) SetBatchSize(batchSize int) *ConsumerRouter {
 	r.batchSize = batchSize
+	return r
+}
+
+func (r *ConsumerRouter) SetTimeInterval(timeInterval time.Duration) *ConsumerRouter {
+	r.timeInterval = timeInterval
 	return r
 }
 
