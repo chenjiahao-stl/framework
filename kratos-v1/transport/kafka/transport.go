@@ -89,3 +89,17 @@ func (h Header) Keys() []string {
 func (h Header) Values(key string) []string {
 	return h[key]
 }
+
+func GetHeaderValue(msg *sarama.ConsumerMessage, key string) string {
+	for _, header := range msg.Headers {
+		if string(header.Key) == key {
+			return string(header.Value)
+		}
+	}
+	return ""
+}
+
+func DecodeBody(msg *sarama.ConsumerMessage, value any) error {
+
+	return nil
+}

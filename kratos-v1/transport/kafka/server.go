@@ -5,6 +5,7 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
+	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
@@ -56,6 +57,17 @@ type ConsumerRouter struct {
 	client         sarama.ConsumerGroup
 	middlewares    []middleware.Middleware
 	handler        HandlerFunc // 消息处理函数
+}
+
+func (s *KafkaServer) AddRouter(topic string, handler HandlerFunc) *ConsumerRouter {
+	router := &ConsumerRouter{
+		topic:       topic,
+		handler:     handler,
+		async:       false,
+		middlewares: s.middlewares,
+	}
+	s.routers = append(s.routers, router)
+	return router
 }
 
 func (r *ConsumerRouter) SetTopic(topic string) *ConsumerRouter {
@@ -123,6 +135,8 @@ func NewKafkaServer(opts ...ServerOption) (*KafkaServer, error) {
 	for _, opt := range opts {
 		opt(server)
 	}
+
+	server.middlewares = append([]middleware.Middleware{recovery.Recovery()})
 
 	version, err := sarama.ParseKafkaVersion(server.version)
 	if err != nil {
@@ -201,11 +215,11 @@ type ConsumerHandler func(context.Context, *sarama.ConsumerMessage) error
 type MiddlewareDecorator func(handler ConsumerHandler) HandlerFunc
 
 // ConsumerHandlerWithStrategy ConsumerHandlerStrategy Handler处理 middleware 中间件增加 通用策略处理类
-func (s *KafkaServer) ConsumerHandlerWithStrategy(topic string, handler ConsumerHandler, decorator MiddlewareDecorator) {
+func (s *KafkaServer) ConsumerHandlerWithStrategy(topic string, handler ConsumerHandler, decorator MiddlewareDecorator) *ConsumerRouter {
 	if decorator == nil {
 		decorator = s.ProcessMessageSequential //默认是循序消费模式
 	}
-	s.AddRouter(topic, decorator(handler))
+	return s.AddRouter(topic, decorator(handler))
 }
 
 // ConsumerHandlerWithError 封装消息处理失败之后的异常处理
@@ -327,16 +341,6 @@ func (q *MessageHandlerQueue) Start() error {
 	return eg.Wait()
 }
 
-func (s *KafkaServer) AddRouter(topic string, handler HandlerFunc) {
-	router := &ConsumerRouter{
-		topic:       topic,
-		handler:     handler,
-		async:       false,
-		middlewares: s.middlewares,
-	}
-	s.routers = append(s.routers, router)
-}
-
 func (s *KafkaServer) consumerHasGroup(ctx context.Context, r *ConsumerRouter) error {
 	// 创建消费者组
 	group, err := sarama.NewConsumerGroup(s.addrs, r.groupId, s.config)
@@ -376,10 +380,10 @@ func (s *KafkaServer) consumerHasGroup(ctx context.Context, r *ConsumerRouter) e
 func (s *KafkaServer) consumerGroup(ctx context.Context, group sarama.ConsumerGroup, r *ConsumerRouter) error {
 	//异步批量消息处理
 	if r.batchSize > 1 {
-		return group.Consume(ctx, []string{r.topic}, &MultipleConsumerGroupHandler{})
+		return group.Consume(ctx, []string{r.topic}, &MultipleConsumerGroupHandler{r})
 	}
 	//同步单条消息处理
-	return group.Consume(ctx, []string{r.topic}, &SingleConsumerGroupHandler{})
+	return group.Consume(ctx, []string{r.topic}, &SingleConsumerGroupHandler{r})
 }
 
 func (s *KafkaServer) Start(nctx context.Context) error {
