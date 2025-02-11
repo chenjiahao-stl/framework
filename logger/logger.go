@@ -2,6 +2,8 @@ package logger
 
 import (
 	"fmt"
+	"github.com/chenjiahao-stl/framework/conf"
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -35,37 +37,77 @@ type LogConfig struct {
 	Development bool   // 是否为开发模式
 }
 
-//func NewLogger() *Logger {
-//	l := &Logger{}
-//	config := zap.NewProductionConfig()
-//	zap.NewProductionEncoderConfig()
-//	log, err := config.Build()
-//	zap.ReplaceGlobals(log)
-//	logger, _ := zap.NewProduction()
-//	return l
-//}
+type BusinessWrite interface {
+	Write(p []byte) (n int, err error)
+	Close() error
+}
+
+type NewKafkaSendFunc func() (BusinessWrite, error)
+
+type FileLog struct {
+	level  zapcore.Level
+	values interface{}
+}
 
 type logger struct {
-	*zap.Logger
+	log               *zap.Logger
+	fileLogCh         chan *FileLog
+	businessFileLogCh chan []byte
+	businessFileZap   BusinessWrite
+	newKafkaSendFunc  NewKafkaSendFunc
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
-func NewLogger(config LogConfig) (*logger, error) {
-	zapLogger, err := initZapLogger(config)
+func NewLogger(config LogConfig, lconf *conf.Logger) (*logger, error) {
+	if lconf.ConsoleLevel == "" {
+		lconf.ConsoleLevel = "INFO"
+	}
+	if lconf.FileLevel == "" {
+		lconf.FileLevel = "INFO"
+	}
+	if lconf.TraceLevel == "" {
+		lconf.TraceLevel = "INFO"
+	}
+	bufferCount := lconf.BufferCount
+	if bufferCount <= 0 {
+		bufferCount = 100000
+	}
+	consoleLevel := log.ParseLevel(lconf.ConsoleLevel)
+	fileLevel := log.ParseLevel(lconf.FileLevel)
+	zapLogger, err := initZapLogger(config, zapcore.Level(consoleLevel), zapcore.Level(fileLevel))
 	if err != nil {
 		return nil, err
 	}
 	//var cfg zap.Config
 	//logger := zap.Must(cfg.Build())
 	l := &logger{
-		zapLogger,
+		log:               zapLogger,
+		fileLogCh:         make(chan *FileLog, bufferCount),
+		businessFileLogCh: make(chan []byte, bufferCount),
+	}
+
+	if lconf.OutputType == conf.Logger_OUT_PUT_KAFKA {
+		if l.newKafkaSendFunc == nil {
+			return nil, fmt.Errorf("newKafkaSendFunc is nil")
+		}
+		sendFunc, err := l.newKafkaSendFunc()
+		if err != nil {
+			return nil, err
+		}
+		l.businessFileZap = sendFunc
+	} else {
+		bizLogPath := "/val/logs/biz"
+		if lconf.BizLogPath != "" {
+			bizLogPath = lconf.BizLogPath
+		}
+		l.businessFileZap = initLumberjack(config, bizLogPath)
 	}
 
 	// 确保日志被正确刷新
 	return l, nil
 }
 
-func initLumberjack(config LogConfig) *lumberjack.Logger {
+func initLumberjack(config LogConfig, bizLogPath string) *lumberjack.Logger {
 	// 定义日志输出的配置
 	writer := &lumberjack.Logger{
 		Filename:   fmt.Sprintf("%s/%s.log", config.LogDir, config.LogName),
@@ -77,8 +119,8 @@ func initLumberjack(config LogConfig) *lumberjack.Logger {
 	return writer
 }
 
-func initZapLogger(config LogConfig) (*zap.Logger, error) {
-	writer := initLumberjack(config)
+func initZapLogger(config LogConfig, consoleLevel, fileLevel zapcore.Level) (*zap.Logger, error) {
+	writer := initLumberjack(config, "")
 	/**
 	zapcore.NewCore 需要三个配置——Encoder，WriteSyncer，LogLevel。
 	1.Encoder:编码器(如何写入日志)。我们将使用开箱即用的NewJSONEncoder()，并使用预先设置的ProductionEncoderConfig()。
@@ -92,7 +134,7 @@ func initZapLogger(config LogConfig) (*zap.Logger, error) {
 		core = zapcore.NewCore(
 			zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()), // 控制台输出
 			zapcore.NewMultiWriteSyncer(zapcore.AddSync(writer), zapcore.AddSync(os.Stdout)),
-			zap.NewAtomicLevelAt(zapcore.DebugLevel), // 开发环境显示 Debug 级别及以上日志
+			zap.NewAtomicLevelAt(consoleLevel), // 开发环境显示 Debug 级别及以上日志
 		)
 	} else {
 		// 生产环境下，使用 JSON 格式输出
@@ -104,7 +146,7 @@ func initZapLogger(config LogConfig) (*zap.Logger, error) {
 		core = zapcore.NewCore(
 			zapcore.NewJSONEncoder(encoderConfig), // JSON 格式
 			zapcore.NewMultiWriteSyncer(zapcore.AddSync(writer), zapcore.AddSync(os.Stdout)),
-			zap.NewAtomicLevelAt(zapcore.InfoLevel), // 生产环境只输出 Info 级别及以上日志
+			zap.NewAtomicLevelAt(fileLevel), // 生产环境只输出 Info 级别及以上日志
 		)
 	}
 

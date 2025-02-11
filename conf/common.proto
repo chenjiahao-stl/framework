@@ -74,3 +74,22 @@ message Data {
   Kafka kafka = 3;
   Tracer tracer = 4;
 }
+
+message Logger {
+  enum OutPutType {
+    OUT_PUT_FILE = 0;
+    OUT_PUT_KAFKA = 1;
+  }
+  enum Mode {
+    MODE_SYNC = 0;
+    MODE_ASYNC = 1;
+  }
+  string level = 1;
+  uint64 buffer_count = 2;
+  OutPutType output_type = 3;
+  Mode mode = 4;
+  string console_level = 5;
+  string file_level = 6;
+  string trace_level = 7;
+  string biz_log_path = 8;
+}
