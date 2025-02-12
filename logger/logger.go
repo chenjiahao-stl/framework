@@ -7,6 +7,7 @@ import (
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 	"os"
 	"time"
 )
@@ -22,8 +23,14 @@ import (
 参考链接：https://www.cnblogs.com/jiujuan/p/17304844.html
 */
 
-// Logger 日志组件
-type Logger struct {
+var _GL *logger
+
+type Option func(l *logger)
+
+func WithKafkaProduct(newKafkaSendFunc NewKafkaSendFunc) Option {
+	return func(l *logger) {
+		l.newKafkaSendFunc = newKafkaSendFunc
+	}
 }
 
 // LogConfig 配置日志结构体
@@ -46,19 +53,20 @@ type NewKafkaSendFunc func() (BusinessWrite, error)
 
 type FileLog struct {
 	level  zapcore.Level
-	values interface{}
+	values []interface{}
 }
 
 type logger struct {
 	log               *zap.Logger
-	fileLogCh         chan *FileLog
+	fileLogCh         chan FileLog
 	businessFileLogCh chan []byte
 	businessFileZap   BusinessWrite
 	newKafkaSendFunc  NewKafkaSendFunc
+	doneCh            chan struct{}
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
-func NewLogger(config LogConfig, lconf *conf.Logger) (*logger, error) {
+func NewLogger(config LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
 	if lconf.ConsoleLevel == "" {
 		lconf.ConsoleLevel = "INFO"
 	}
@@ -76,23 +84,27 @@ func NewLogger(config LogConfig, lconf *conf.Logger) (*logger, error) {
 	fileLevel := log.ParseLevel(lconf.FileLevel)
 	zapLogger, err := initZapLogger(config, zapcore.Level(consoleLevel), zapcore.Level(fileLevel))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	//var cfg zap.Config
 	//logger := zap.Must(cfg.Build())
 	l := &logger{
 		log:               zapLogger,
-		fileLogCh:         make(chan *FileLog, bufferCount),
+		fileLogCh:         make(chan FileLog, bufferCount),
 		businessFileLogCh: make(chan []byte, bufferCount),
+	}
+
+	for _, opt := range opts {
+		opt(l)
 	}
 
 	if lconf.OutputType == conf.Logger_OUT_PUT_KAFKA {
 		if l.newKafkaSendFunc == nil {
-			return nil, fmt.Errorf("newKafkaSendFunc is nil")
+			return nil, nil, fmt.Errorf("newKafkaSendFunc is nil")
 		}
 		sendFunc, err := l.newKafkaSendFunc()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		l.businessFileZap = sendFunc
 	} else {
@@ -103,8 +115,12 @@ func NewLogger(config LogConfig, lconf *conf.Logger) (*logger, error) {
 		l.businessFileZap = initLumberjack(config, bizLogPath)
 	}
 
+	_GL = l
 	// 确保日志被正确刷新
-	return l, nil
+	return l, func() {
+		Sync(l.log)
+		l.businessFileZap.Close()
+	}, nil
 }
 
 func initLumberjack(config LogConfig, bizLogPath string) *lumberjack.Logger {
@@ -157,9 +173,56 @@ func initZapLogger(config LogConfig, consoleLevel, fileLevel zapcore.Level) (*za
 	return zapL, nil
 }
 
+func (l *logger) writeLog() {
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		for item := range l.fileLogCh {
+			l.log.Log(item.level, "msg", getLogField(item.values)...)
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		for item := range l.businessFileLogCh {
+			l.businessFileZap.Write(item)
+		}
+		return nil
+	})
+	eg.Wait()
+	l.doneCh <- struct{}{}
+}
+
+func (l *logger) filelog(level log.Level, keyvals ...interface{}) {
+	select {
+	case l.fileLogCh <- FileLog{
+		level:  zapcore.Level(level),
+		values: keyvals,
+	}:
+	default:
+	}
+}
+
 // Sync 刷新日志
 func Sync(logger *zap.Logger) {
 	if err := logger.Sync(); err != nil {
 		fmt.Printf("Error syncing logger: %v", err)
 	}
+}
+
+type Helper struct {
+	logger *logger
+}
+
+func NewHelper() *Helper {
+	if _GL == nil {
+		panic("logger no init")
+	}
+	return &Helper{logger: _GL}
+}
+
+func (l *Helper) Debug(val interface{}) {
+	l.log(log.LevelDebug, val)
+}
+
+func (l *Helper) log(level log.Level, val interface{}) {
+	l.logger.filelog(level, "msg", val)
 }
