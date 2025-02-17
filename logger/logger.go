@@ -66,7 +66,7 @@ type logger struct {
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
-func NewLogger(config LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
+func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
 	if lconf.ConsoleLevel == "" {
 		lconf.ConsoleLevel = "INFO"
 	}
@@ -114,7 +114,7 @@ func NewLogger(config LogConfig, lconf *conf.Logger, opts ...Option) (*logger, f
 		}
 		l.businessFileZap = initLumberjack(config, bizLogPath)
 	}
-
+	go l.writeLog()
 	_GL = l
 	// 确保日志被正确刷新
 	return l, func() {
@@ -123,10 +123,12 @@ func NewLogger(config LogConfig, lconf *conf.Logger, opts ...Option) (*logger, f
 	}, nil
 }
 
-func initLumberjack(config LogConfig, bizLogPath string) *lumberjack.Logger {
+func initLumberjack(config *LogConfig, bizLogPath string) *lumberjack.Logger {
+	//是否需要校验文件是否存在?
+
 	// 定义日志输出的配置
 	writer := &lumberjack.Logger{
-		Filename:   fmt.Sprintf("%s/%s.log", config.LogDir, config.LogName),
+		Filename:   fmt.Sprintf("%s/%s.log", bizLogPath, conf.ServerName),
 		MaxSize:    config.MaxSize,    // 每个日志文件最大尺寸,megabytes，M 为单位
 		MaxBackups: config.MaxBackups, // 保留旧文件最大份数
 		MaxAge:     config.MaxAge,     // days  旧文件最大保存天数
@@ -135,8 +137,8 @@ func initLumberjack(config LogConfig, bizLogPath string) *lumberjack.Logger {
 	return writer
 }
 
-func initZapLogger(config LogConfig, consoleLevel, fileLevel zapcore.Level) (*zap.Logger, error) {
-	writer := initLumberjack(config, "")
+func initZapLogger(config *LogConfig, consoleLevel, fileLevel zapcore.Level) (*zap.Logger, error) {
+	writer := initLumberjack(config, config.LogDir)
 	/**
 	zapcore.NewCore 需要三个配置——Encoder，WriteSyncer，LogLevel。
 	1.Encoder:编码器(如何写入日志)。我们将使用开箱即用的NewJSONEncoder()，并使用预先设置的ProductionEncoderConfig()。
@@ -177,7 +179,7 @@ func (l *logger) writeLog() {
 	eg := errgroup.Group{}
 	eg.Go(func() error {
 		for item := range l.fileLogCh {
-			l.log.Log(item.level, "msg", getLogField(item.values)...)
+			l.log.Log(item.level, "msg", getLogField(item.values...)...)
 		}
 		return nil
 	})
@@ -221,6 +223,34 @@ func NewHelper() *Helper {
 
 func (l *Helper) Debug(val interface{}) {
 	l.log(log.LevelDebug, val)
+}
+
+func (l *Helper) Debugf(format string, vals interface{}) {
+	l.log(log.LevelDebug, fmt.Sprintf(format, vals))
+}
+
+func (l *Helper) Info(val interface{}) {
+	l.log(log.LevelInfo, val)
+}
+
+func (l *Helper) Infof(format string, vals interface{}) {
+	l.log(log.LevelInfo, fmt.Sprintf(format, vals))
+}
+
+func (l *Helper) Warn(val interface{}) {
+	l.log(log.LevelWarn, val)
+}
+
+func (l *Helper) Warnf(format string, vals interface{}) {
+	l.log(log.LevelWarn, fmt.Sprintf(format, vals))
+}
+
+func (l *Helper) Error(val interface{}) {
+	l.log(log.LevelError, val)
+}
+
+func (l *Helper) Errorf(format string, vals interface{}) {
+	l.log(log.LevelError, fmt.Sprintf(format, vals))
 }
 
 func (l *Helper) log(level log.Level, val interface{}) {
