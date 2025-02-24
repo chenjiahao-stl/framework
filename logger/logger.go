@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"github.com/chenjiahao-stl/framework/conf"
 	"github.com/go-kratos/kratos/v2/log"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -203,6 +205,10 @@ func (l *logger) filelog(level log.Level, keyvals ...interface{}) {
 	}
 }
 
+func (l *logger) business(val []byte) {
+	l.businessFileLogCh <- val
+}
+
 // Sync 刷新日志
 func Sync(logger *zap.Logger) {
 	if err := logger.Sync(); err != nil {
@@ -210,49 +216,86 @@ func Sync(logger *zap.Logger) {
 	}
 }
 
-type Helper struct {
+type Helper[businessData BusinessData] struct {
 	logger *logger
 }
 
-func NewHelper() *Helper {
+func NewHelper[bus BusinessData]() *Helper[bus] {
 	if _GL == nil {
 		panic("logger no init")
 	}
-	return &Helper{logger: _GL}
+	return &Helper[bus]{
+		logger: _GL,
+	}
 }
 
-func (l *Helper) Debug(val interface{}) {
+func (l *Helper[business]) InfoWithBusiness(ctx context.Context, val business) {
+	m := &TagMapData{
+		rw:   sync.RWMutex{},
+		data: map[string]string{},
+	}
+	l.logWithBusiness(ctx, log.LevelInfo, val.Marshal(m))
+}
+
+func (l *Helper[business]) ErrorWithBusiness(ctx context.Context, val business) {
+	m := &TagMapData{
+		rw:   sync.RWMutex{},
+		data: map[string]string{},
+	}
+	l.logWithBusiness(ctx, log.LevelError, val.Marshal(m))
+}
+
+func (l *Helper[businessData]) logWithBusiness(ctx context.Context, level log.Level, val []byte) {
+	//业务日志写入文件
+	l.logWithContext(ctx, level, val)
+	//业务日志写入kafka->es 记录交易日志记录等
+	l.logger.business(append(val, []byte("\n")...))
+}
+
+// 输出到普通日志文件
+// 输出到jaeger
+func (l *Helper[businessData]) logWithContext(ctx context.Context, level log.Level, val []byte) {
+	l.log(level, val)
+	//输入到jaeger
+}
+
+func (l *Helper[business]) Debug(val interface{}) {
 	l.log(log.LevelDebug, val)
 }
 
-func (l *Helper) Debugf(format string, vals interface{}) {
+func (l *Helper[business]) Debugf(format string, vals interface{}) {
 	l.log(log.LevelDebug, fmt.Sprintf(format, vals))
 }
 
-func (l *Helper) Info(val interface{}) {
+func (l *Helper[business]) Info(val interface{}) {
 	l.log(log.LevelInfo, val)
 }
 
-func (l *Helper) Infof(format string, vals interface{}) {
+func (l *Helper[business]) Infof(format string, vals interface{}) {
 	l.log(log.LevelInfo, fmt.Sprintf(format, vals))
 }
 
-func (l *Helper) Warn(val interface{}) {
+func (l *Helper[business]) Warn(val interface{}) {
 	l.log(log.LevelWarn, val)
 }
 
-func (l *Helper) Warnf(format string, vals interface{}) {
+func (l *Helper[business]) Warnf(format string, vals interface{}) {
 	l.log(log.LevelWarn, fmt.Sprintf(format, vals))
 }
 
-func (l *Helper) Error(val interface{}) {
+func (l *Helper[business]) Error(val interface{}) {
 	l.log(log.LevelError, val)
 }
 
-func (l *Helper) Errorf(format string, vals interface{}) {
+func (l *Helper[business]) Errorf(format string, vals interface{}) {
 	l.log(log.LevelError, fmt.Sprintf(format, vals))
 }
 
-func (l *Helper) log(level log.Level, val interface{}) {
+func (l *Helper[business]) log(level log.Level, val interface{}) {
+	switch v := val.(type) {
+	case []byte:
+		val = string(v)
+	default:
+	}
 	l.logger.filelog(level, "msg", val)
 }
