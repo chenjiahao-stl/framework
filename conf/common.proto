@@ -63,6 +63,7 @@ message Data {
     string producer_mode = 5;
     uint64 timeout = 6;
     string manual_partitioner = 7;
+    repeated string addrs = 8;
   }
   message Tracer {
     string url = 1;

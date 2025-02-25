@@ -15,11 +15,14 @@ type AsyncProducer struct {
 }
 
 func NewAsyncProducer(config *conf.Data_Kafka) (*AsyncProducer, func(), error) {
-	p, err := newAsyncProducer(netutil.JoinHostPort(config.GetHost(), config.GetPort()))
+	if len(config.Addrs) == 0 {
+		config.Addrs = netutil.JoinHostPort(config.GetHost(), config.GetPort())
+	}
+	p, err := newAsyncProducer(config.Addrs)
 	if err != nil {
 		return nil, nil, err
 	}
-	return nil, func() {
+	return p, func() {
 		p.close()
 	}, nil
 }

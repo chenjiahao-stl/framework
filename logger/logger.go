@@ -99,7 +99,7 @@ func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, 
 	for _, opt := range opts {
 		opt(l)
 	}
-
+	_GL = l
 	if lconf.OutputType == conf.Logger_OUT_PUT_KAFKA {
 		if l.newKafkaSendFunc == nil {
 			return nil, nil, fmt.Errorf("newKafkaSendFunc is nil")
@@ -117,7 +117,7 @@ func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, 
 		l.businessFileZap = initLumberjack(config, bizLogPath)
 	}
 	go l.writeLog()
-	_GL = l
+
 	// 确保日志被正确刷新
 	return l, func() {
 		Sync(l.log)

@@ -15,7 +15,10 @@ type SyncProducer struct {
 }
 
 func NewSyncProducerWithConfig(config *conf.Data_Kafka) (*SyncProducer, func(), error) {
-	p, err := newSyncProducer(netutil.JoinHostPort(config.GetHost(), config.GetPort()))
+	if len(config.Addrs) == 0 {
+		config.Addrs = netutil.JoinHostPort(config.GetHost(), config.GetPort())
+	}
+	p, err := newSyncProducer(config.Addrs)
 	if err != nil {
 		return nil, nil, err
 	}

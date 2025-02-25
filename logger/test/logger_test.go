@@ -1,17 +1,18 @@
-package logger
+package test
 
 import (
 	"context"
 	"fmt"
 	"github.com/chenjiahao-stl/framework/conf"
+	"github.com/chenjiahao-stl/framework/logger"
 	"github.com/chenjiahao-stl/framework/logger/business"
 	"testing"
-	"time"
 )
 
 func TestLogger(t *testing.T) {
+	//ch := make(chan struct{})
 	conf.ServerName = "order"
-	_, cancel, err := NewLogger(&LogConfig{
+	_, cancel, err := logger.NewLogger(&logger.LogConfig{
 		LogDir: "D:\\Data\\logs\\log",
 		//LogName:     "ts-order",
 		MaxSize:     10,
@@ -20,25 +21,21 @@ func TestLogger(t *testing.T) {
 		Compress:    true,
 		Development: false,
 	}, &conf.Logger{
-		OutputType: conf.Logger_OUT_PUT_FILE,
+		OutputType: conf.Logger_OUT_PUT_KAFKA,
 		BizLogPath: "D:\\Data\\logs\\biz",
-	}, WithKafkaProduct(business.NewKafkaSend(&conf.Data_Kafka{}, "topic111")))
+	}, logger.WithKafkaProduct(business.NewKafkaSend(&conf.Data_Kafka{
+		Addrs: append([]string{"192.168.3.13:9192", "192.168.3.13:9292", "192.168.3.13:9392"}),
+	}, "topic111")))
 	if err != nil {
 		return
 	}
 	defer cancel()
-	helper := NewHelper[BusinessStep]()
+	helper := logger.NewHelper[logger.BusinessStep]()
 	helper.Infof("CreateOrder id:%v", 123456)
-	helper.InfoWithBusiness(context.Background(), BusinessStep{
+	helper.InfoWithBusiness(context.Background(), logger.BusinessStep{
 		Step: "Create Fundorder",
 		Msg:  "fund_order_id: 123456",
 	})
 	fmt.Println("1111")
-	// 阻塞，直到收到完成信号
-	select {
-	case <-helper.logger.doneCh:
-		t.Log("Received done signal, exiting test")
-	case <-time.After(5 * time.Second): // 超时处理
-		t.Fatal("Test timed out")
-	}
+	select {}
 }
