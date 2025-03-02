@@ -2,10 +2,14 @@ package logger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/chenjiahao-stl/framework/conf"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/natefinch/lumberjack"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -65,6 +69,7 @@ type logger struct {
 	businessFileZap   BusinessWrite
 	newKafkaSendFunc  NewKafkaSendFunc
 	doneCh            chan struct{}
+	trace             trace.Tracer
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
@@ -99,6 +104,9 @@ func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, 
 	for _, opt := range opts {
 		opt(l)
 	}
+
+	l.trace = otel.Tracer(conf.ServerName)
+
 	_GL = l
 	if lconf.OutputType == conf.Logger_OUT_PUT_KAFKA {
 		if l.newKafkaSendFunc == nil {
@@ -229,6 +237,10 @@ func NewHelper[bus BusinessData]() *Helper[bus] {
 	}
 }
 
+func (l *Helper[businessData]) Start(ctx context.Context, spanName string) (context.Context, trace.Span) {
+	return l.logger.trace.Start(ctx, spanName)
+}
+
 func (l *Helper[business]) InfoWithBusiness(ctx context.Context, val business) {
 	m := &TagMapData{
 		rw:   sync.RWMutex{},
@@ -254,9 +266,25 @@ func (l *Helper[businessData]) logWithBusiness(ctx context.Context, level log.Le
 
 // 输出到普通日志文件
 // 输出到jaeger
-func (l *Helper[businessData]) logWithContext(ctx context.Context, level log.Level, val []byte) {
-	l.log(level, val)
+func (l *Helper[businessData]) logWithContext(ctx context.Context, level log.Level, msg interface{}) {
+	l.log(level, msg)
 	//输入到jaeger
+	span := trace.SpanFromContext(ctx)
+	val := ""
+	switch v := msg.(type) {
+	case fmt.Stringer:
+		val = v.String()
+	case string:
+		val = v
+	case byte:
+		val = string(v)
+	case error:
+		val = v.Error()
+	default:
+		bf, _ := json.Marshal(v)
+		val = string(bf)
+	}
+	span.AddEvent("msg_name", trace.WithAttributes(attribute.String("msg", val)))
 }
 
 func (l *Helper[business]) Debug(val interface{}) {
@@ -273,6 +301,14 @@ func (l *Helper[business]) Info(val interface{}) {
 
 func (l *Helper[business]) Infof(format string, vals interface{}) {
 	l.log(log.LevelInfo, fmt.Sprintf(format, vals))
+}
+
+func (l *Helper[businessData]) InfoWithContext(ctx context.Context, val interface{}) {
+	l.logWithContext(ctx, log.LevelInfo, val)
+}
+
+func (l *Helper[businessData]) InfofWithContext(ctx context.Context) {
+
 }
 
 func (l *Helper[business]) Warn(val interface{}) {
