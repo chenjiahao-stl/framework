@@ -284,7 +284,7 @@ func (l *Helper[businessData]) logWithContext(ctx context.Context, level log.Lev
 		bf, _ := json.Marshal(v)
 		val = string(bf)
 	}
-	span.AddEvent("msg_name", trace.WithAttributes(attribute.String("msg", val)))
+	span.AddEvent("msg_event", trace.WithAttributes(attribute.String("msg", val)))
 }
 
 func (l *Helper[business]) Debug(val interface{}) {

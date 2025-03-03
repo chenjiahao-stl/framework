@@ -6,6 +6,7 @@ import (
 	"github.com/chenjiahao-stl/framework/logger"
 	"github.com/chenjiahao-stl/framework/logger/business"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"log"
 	"net/http"
@@ -28,6 +29,7 @@ func TestA(t *testing.T) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// 获取全局追踪器
 		tracer := otel.Tracer("example.com/trace")
+		//ctx, span := tracer.Start(r.Context(), "incoming_request")
 		ctx, span := tracer.Start(r.Context(), "incoming_request")
 		defer span.End()
 
@@ -105,10 +107,35 @@ func TestB(t *testing.T) {
 	}
 	defer cancel()
 	helper := logger.NewHelper[logger.BusinessStep]()
-	tracer := otel.Tracer("ts-ppppp")
-	ctx, span := tracer.Start(context.TODO(), "FreezeAmount")
-	defer span.End()
-	span.AddEvent("Request received", trace.WithAttributes())
-	helper.InfoWithContext(ctx, "FreezeAmount core_order_id: 1234567")
+
+	// 模拟一些工作
+	time.Sleep(500 * time.Millisecond)
+
+	go func() {
+		tracer := otel.Tracer("example.com/trace")
+		ctx, span := tracer.Start(context.TODO(), "incoming_request")
+		defer span.End()
+
+		// 模拟一些工作
+		time.Sleep(100 * time.Millisecond)
+
+		// 在 span 中记录事件
+		span.AddEvent("Request received", trace.WithAttributes(attribute.String("sss", "qqq")))
+
+		_, subSpan := tracer.Start(ctx, "sub-request")
+		subSpan.AddEvent("SubSpan Event", trace.WithAttributes(attribute.String("key111", "value11")))
+		defer subSpan.End()
+	}()
+
+	go func() {
+		//tracer := otel.Tracer("ts-ppppp")
+		//ctx, span := tracer.Start(context.TODO(), "FreezeAmount")
+		ctx, span := helper.Start(context.TODO(), "FreezeAmount")
+		defer span.End()
+		//span.AddEvent("Request received", trace.WithAttributes())
+		helper.InfoWithContext(ctx, "FreezeAmount core_order_id: 1234567")
+	}()
+
+	time.Sleep(100 * time.Millisecond)
 	select {}
 }
