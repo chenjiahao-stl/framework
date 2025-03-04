@@ -35,7 +35,7 @@ func (b BusinessStep) Marshal(m *TagMapData) []byte {
 		msg = v.String()
 	case string:
 		msg = v
-	case byte:
+	case []byte:
 		msg = string(v)
 	case error:
 		msg = v.Error()

@@ -59,25 +59,14 @@ func TestA(t *testing.T) {
 
 }
 
-func TestB(t *testing.T) {
-	//InitJaegerTracer(&conf.Data_Tracer{
-	//	Url: "http://127.0.0.1:14268/api/traces",
-	//}, "addaaa")
-	//h := logger.NewHelper(logger.NewLogger("a", "debug"), logger.WithName("aaaa"))
-	//
-	//ctx, span := h.Start(context.TODO(), "aadddd")
-	//
-	//h.DebugWithContext(ctx, "aaaaa")
-	//ctx, cancel := context.WithCancel(ctx)
-	//cancel()
-	//ctx = NewSpanContextNotCancel(ctx)
-	//h.DebugWithContext(ctx, "aaaaa11111")
-	//span.End()
-	//fmt.Println(ctx.Err())
-	//tracer := otel.Tracer("aaaa")
-	//start, span := tracer.Start(context.Background(), "CreateOrder")
-	//defer span.End()
+type IncrenmentAmountRequest struct {
+	Appid           string `json:"appid"`
+	AccountId       string `json:"account_id"`
+	ExOrderId       string `json:"ex_order_id"`
+	TransactionCode string `json:"transaction_code"`
+}
 
+func TestB(t *testing.T) {
 	// 初始化 Jaeger 和 OpenTelemetry
 	tp, _, err := InitJaegerTracer(&conf.Data_Tracer{
 		Url: "http://192.168.3.13:14268/api/traces",
@@ -128,12 +117,22 @@ func TestB(t *testing.T) {
 	}()
 
 	go func() {
-		//tracer := otel.Tracer("ts-ppppp")
-		//ctx, span := tracer.Start(context.TODO(), "FreezeAmount")
+		req := &IncrenmentAmountRequest{
+			Appid:           "a264644s",
+			AccountId:       "A456L",
+			ExOrderId:       "D-523145",
+			TransactionCode: "DEPOSIT",
+		}
+		//marshal, _ := json.Marshal(req)
 		ctx, span := helper.Start(context.TODO(), "FreezeAmount")
 		defer span.End()
-		//span.AddEvent("Request received", trace.WithAttributes())
-		helper.InfoWithContext(ctx, "FreezeAmount core_order_id: 1234567")
+		helper.InfoWithBusiness(ctx, logger.BusinessStep{
+			Step: "Fundorder Request",
+			Msg:  req,
+		})
+		ctx2, span2 := helper.Start(ctx, "freezeAmount")
+		defer span2.End()
+		helper.InfoWithContext(ctx2, "FreezeAmount core_order_id: 1234567")
 	}()
 
 	time.Sleep(100 * time.Millisecond)
