@@ -43,7 +43,7 @@ func newSyncProducer(addrs []string, opts ...ClientConfigOption) (*SyncProducer,
 	}
 	return &SyncProducer{
 		producer: producer,
-		l:        logger.NewHelper[logger.BusinessData](),
+		l:        logger.NewHelper[logger.BusinessData]("SyncProducer"),
 	}, nil
 }
 

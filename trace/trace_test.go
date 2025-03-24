@@ -95,7 +95,7 @@ func TestB(t *testing.T) {
 		return
 	}
 	defer cancel()
-	helper := logger.NewHelper[logger.BusinessStep]()
+	helper := logger.NewHelper[logger.BusinessStep]("test-trace")
 
 	// 模拟一些工作
 	time.Sleep(500 * time.Millisecond)

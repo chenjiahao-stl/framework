@@ -226,14 +226,16 @@ func Sync(logger *zap.Logger) {
 
 type Helper[businessData BusinessData] struct {
 	logger *logger
+	name   string
 }
 
-func NewHelper[bus BusinessData]() *Helper[bus] {
+func NewHelper[bus BusinessData](name string) *Helper[bus] {
 	if _GL == nil {
 		panic("logger no init")
 	}
 	return &Helper[bus]{
 		logger: _GL,
+		name:   name,
 	}
 }
 
@@ -333,5 +335,10 @@ func (l *Helper[business]) log(level log.Level, val interface{}) {
 		val = string(v)
 	default:
 	}
-	l.logger.filelog(level, "msg", val)
+	var keyvals []interface{}
+	if l.name != "" {
+		keyvals = append(keyvals, "logger_name", l.name)
+	}
+	keyvals = append(keyvals, "msg", val)
+	l.logger.filelog(level, keyvals)
 }

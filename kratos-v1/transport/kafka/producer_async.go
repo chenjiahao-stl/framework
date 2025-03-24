@@ -39,7 +39,7 @@ func newAsyncProducer(addrs []string, opts ...ClientConfigOption) (*AsyncProduce
 	}
 	return &AsyncProducer{
 		producer: asyncProducer,
-		l:        logger.NewHelper[logger.BusinessData](),
+		l:        logger.NewHelper[logger.BusinessData]("AsyncProducer"),
 	}, nil
 }
 

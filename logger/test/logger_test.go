@@ -30,7 +30,7 @@ func TestLogger(t *testing.T) {
 		return
 	}
 	defer cancel()
-	helper := logger.NewHelper[logger.BusinessStep]()
+	helper := logger.NewHelper[logger.BusinessStep]("test")
 	helper.Infof("CreateOrder id:%v", 123456)
 	helper.InfoWithBusiness(context.Background(), logger.BusinessStep{
 		Step: "Create Fundorder",
