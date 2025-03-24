@@ -3,6 +3,9 @@ package etcd
 import (
 	"context"
 	"fmt"
+	"github.com/chenjiahao-stl/framework/conf"
+	"github.com/chenjiahao-stl/framework/etcd"
+	"github.com/chenjiahao-stl/framework/logger"
 	"math/rand"
 	"time"
 
@@ -15,6 +18,8 @@ var (
 	_ registry.Registrar = (*Registry)(nil)
 	_ registry.Discovery = (*Registry)(nil)
 )
+
+const KEEP_RETRY int = -1
 
 // Option is etcd registry option.
 type Option func(o *options)
@@ -45,6 +50,18 @@ func MaxRetry(num int) Option {
 	return func(o *options) { o.maxRetry = num }
 }
 
+func KeepRetry() Option {
+	return func(o *options) {
+		o.maxRetry = KEEP_RETRY
+	}
+}
+
+func NameSpace(namespace string) Option {
+	return func(o *options) {
+		o.namespace = namespace
+	}
+}
+
 // Registry is etcd registry.
 type Registry struct {
 	opts   *options
@@ -56,6 +73,24 @@ type Registry struct {
 		When the service instance is deregistered, the corresponding context cancel function is called to stop the heartbeat.
 	*/
 	ctxMap map[*registry.ServiceInstance]context.CancelFunc
+	log    *logger.Helper[logger.BusinessStep]
+}
+
+func NewRegister(register *conf.Registry, cli *etcd.EtcdClient) (*Registry, error) {
+	if register == nil || register.Etcd == nil {
+		return nil, fmt.Errorf("etcd Registry config is nil")
+	}
+	opts := []Option{}
+	if register.Namespace != "" {
+		opts = append(opts, NameSpace(fmt.Sprintf("/microservices/%s", register.GetNamespace())))
+	}
+	if register.Etcd.MaxRetry < 0 {
+		register.Etcd.MaxRetry = -1
+		opts = append(opts, KeepRetry())
+	} else if register.Etcd.MaxRetry > 0 {
+		opts = append(opts, MaxRetry(int(register.Etcd.MaxRetry)))
+	}
+	return New(cli.Client(), opts...), nil
 }
 
 // New creates etcd registry
@@ -64,7 +99,6 @@ func New(client *clientv3.Client, opts ...Option) (r *Registry) {
 		ctx:       context.Background(),
 		namespace: "/microservices",
 		ttl:       time.Second * 15,
-		maxRetry:  5,
 	}
 	for _, o := range opts {
 		o(op)
@@ -74,6 +108,7 @@ func New(client *clientv3.Client, opts ...Option) (r *Registry) {
 		client: client,
 		kv:     clientv3.NewKV(client),
 		ctxMap: make(map[*registry.ServiceInstance]context.CancelFunc),
+		log:    logger.NewHelper[logger.BusinessStep]("etcd-register"),
 	}
 }
 
