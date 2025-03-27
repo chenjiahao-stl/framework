@@ -73,7 +73,7 @@ type logger struct {
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
-func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
+func NewLogger(config *conf.Logger_LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
 	if lconf.ConsoleLevel == "" {
 		lconf.ConsoleLevel = "INFO"
 	}
@@ -133,21 +133,21 @@ func NewLogger(config *LogConfig, lconf *conf.Logger, opts ...Option) (*logger, 
 	}, nil
 }
 
-func initLumberjack(config *LogConfig, bizLogPath string) *lumberjack.Logger {
+func initLumberjack(config *conf.Logger_LogConfig, bizLogPath string) *lumberjack.Logger {
 	//是否需要校验文件是否存在?
 
 	// 定义日志输出的配置
 	writer := &lumberjack.Logger{
 		Filename:   fmt.Sprintf("%s/%s.log", bizLogPath, conf.ServerName),
-		MaxSize:    config.MaxSize,    // 每个日志文件最大尺寸,megabytes，M 为单位
-		MaxBackups: config.MaxBackups, // 保留旧文件最大份数
-		MaxAge:     config.MaxAge,     // days  旧文件最大保存天数
-		Compress:   config.Compress,   // 是否压缩日志归档，默认不压缩
+		MaxSize:    int(config.MaxSize),    // 每个日志文件最大尺寸,megabytes，M 为单位
+		MaxBackups: int(config.MaxBackups), // 保留旧文件最大份数
+		MaxAge:     int(config.MaxAge),     // days  旧文件最大保存天数
+		Compress:   config.Compress,        // 是否压缩日志归档，默认不压缩
 	}
 	return writer
 }
 
-func initZapLogger(config *LogConfig, consoleLevel, fileLevel zapcore.Level) (*zap.Logger, error) {
+func initZapLogger(config *conf.Logger_LogConfig, consoleLevel, fileLevel zapcore.Level) (*zap.Logger, error) {
 	writer := initLumberjack(config, config.LogDir)
 	/**
 	zapcore.NewCore 需要三个配置——Encoder，WriteSyncer，LogLevel。

@@ -77,6 +77,15 @@ message Data {
 }
 
 message Logger {
+  message LogConfig {
+    string log_dir = 1;
+    string log_name = 2;
+    int64 max_size = 3;
+    int64 max_backups = 4;
+    int64 max_age = 5;
+    bool compress = 6;
+    bool development = 7;
+  }
   enum OutPutType {
     OUT_PUT_FILE = 0;
     OUT_PUT_KAFKA = 1;
@@ -93,4 +102,5 @@ message Logger {
   string file_level = 6;
   string trace_level = 7;
   string biz_log_path = 8;
+  LogConfig log_config = 9;
 }
