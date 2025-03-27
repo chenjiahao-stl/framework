@@ -1,10 +1,12 @@
 package etcd
 
 import (
+	"fmt"
 	"github.com/chenjiahao-stl/framework/conf"
 	"github.com/chenjiahao-stl/framework/logger"
 	"github.com/chenjiahao-stl/framework/netutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"strings"
 	"time"
 )
 
@@ -22,7 +24,14 @@ func NewEtcdClient(config *conf.Data_Etcd) (*EtcdClient, func(), error) {
 }
 
 func newEtcdClient(config *conf.Data_Etcd) (*clientv3.Client, func(), error) {
-	address := netutil.JoinHostPort(config.Host, config.Port)
+	var address []string
+	if config.GetAddress() != "" {
+		address = strings.Split(config.GetAddress(), ",")
+	} else if config.GetHost() != "" && config.GetPort() != 0 {
+		address = netutil.JoinHostPort(config.Host, config.Port)
+	} else {
+		return nil, nil, fmt.Errorf("etcd config is nil")
+	}
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   address,
 		DialTimeout: 5 * time.Second,

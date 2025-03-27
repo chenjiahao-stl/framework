@@ -53,8 +53,9 @@ message Data {
   message Etcd {
     string host = 1;
     uint64 port = 2;
-    string username = 3;
-    string password = 4;
+    string address = 3;
+    string username = 4;
+    string password = 5;
   }
   message Kafka {
     string host = 1;
