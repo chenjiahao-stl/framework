@@ -10,6 +10,7 @@ message Bootstrap{
   ConfigCenter config_center = 1;
   Registry registry = 2;
   Data data = 3;
+  Logger logger = 4;
 }
 
 //配置中心

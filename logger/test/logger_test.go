@@ -12,7 +12,7 @@ import (
 func TestLogger(t *testing.T) {
 	//ch := make(chan struct{})
 	conf.ServerName = "order"
-	_, cancel, err := logger.NewLogger(&logger.LogConfig{
+	_, cancel, err := logger.NewLogger(&conf.Logger_LogConfig{
 		LogDir: "D:\\Data\\logs\\log",
 		//LogName:     "ts-order",
 		MaxSize:     10,
