@@ -73,7 +73,7 @@ type logger struct {
 }
 
 // NewLogger 创建并初始化 zap logger，结合 lumberjack 进行日志切割
-func NewLogger(config *conf.Logger_LogConfig, lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
+func NewLogger(lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
 	if lconf.ConsoleLevel == "" {
 		lconf.ConsoleLevel = "INFO"
 	}
@@ -89,7 +89,7 @@ func NewLogger(config *conf.Logger_LogConfig, lconf *conf.Logger, opts ...Option
 	}
 	consoleLevel := log.ParseLevel(lconf.ConsoleLevel)
 	fileLevel := log.ParseLevel(lconf.FileLevel)
-	zapLogger, err := initZapLogger(config, zapcore.Level(consoleLevel), zapcore.Level(fileLevel))
+	zapLogger, err := initZapLogger(lconf.GetLogConfig(), zapcore.Level(consoleLevel), zapcore.Level(fileLevel))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,7 +122,7 @@ func NewLogger(config *conf.Logger_LogConfig, lconf *conf.Logger, opts ...Option
 		if lconf.BizLogPath != "" {
 			bizLogPath = lconf.BizLogPath
 		}
-		l.businessFileZap = initLumberjack(config, bizLogPath)
+		l.businessFileZap = initLumberjack(lconf.GetLogConfig(), bizLogPath)
 	}
 	go l.writeLog()
 
