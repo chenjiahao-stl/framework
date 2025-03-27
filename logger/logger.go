@@ -133,6 +133,11 @@ func NewLogger(lconf *conf.Logger, opts ...Option) (*logger, func(), error) {
 	}, nil
 }
 
+func (l *logger) Log(level log.Level, keyvals ...interface{}) error {
+	l.log.Log(zapcore.Level(level), "", getLogField(keyvals...)...)
+	return nil
+}
+
 func initLumberjack(config *conf.Logger_LogConfig, bizLogPath string) *lumberjack.Logger {
 	//是否需要校验文件是否存在?
 
