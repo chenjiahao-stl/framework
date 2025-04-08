@@ -77,15 +77,16 @@ func TestB(t *testing.T) {
 	defer ShutdownTracer(tp)
 
 	conf.ServerName = "ts-order"
-	_, cancel, err := logger.NewLogger(&logger.LogConfig{
-		LogDir: "D:\\Data\\logs\\log",
-		//LogName:     "ts-order",
-		MaxSize:     10,
-		MaxBackups:  3,
-		MaxAge:      3,
-		Compress:    true,
-		Development: false,
-	}, &conf.Logger{
+	_, cancel, err := logger.NewLogger(&conf.Logger{
+		LogConfig: &conf.Logger_LogConfig{
+			LogDir: "D:\\Data\\logs\\log",
+			//LogName:     "ts-order",
+			MaxSize:     10,
+			MaxBackups:  3,
+			MaxAge:      3,
+			Compress:    true,
+			Development: false,
+		},
 		OutputType: conf.Logger_OUT_PUT_KAFKA,
 		BizLogPath: "D:\\Data\\logs\\biz",
 	}, logger.WithKafkaProduct(business.NewKafkaSend(&conf.Data_Kafka{
